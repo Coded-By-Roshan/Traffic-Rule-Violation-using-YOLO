@@ -13,21 +13,29 @@ nepali_chars = "०१२३४५६७८९अआइईउऊएऐओऔक�
 english_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 char_list = nepali_chars + english_chars
 
-# Function to preprocess the number plate image and segment characters
+
+
 def segment_characters(number_plate_image):
-    # Convert to grayscale
+    # Resize the image for consistent processing (standard size)
+    fixed_size = (1000, 480)  # Adjust this as needed
+    number_plate_image = cv2.resize(number_plate_image, fixed_size)
+
+    # Convert the image to grayscale
     gray = cv2.cvtColor(number_plate_image, cv2.COLOR_BGR2GRAY)
-    
-    # Apply GaussianBlur to smooth the image
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    
-    # Apply adaptive thresholding to get binary image
-    binary = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                   cv2.THRESH_BINARY_INV, 11, 2)
-    
-    # Use morphological operations to remove noise and separate characters
+    blurred = cv2.bilateralFilter(gray, 13, 15, 15)
+
+    # Apply Gaussian blur to reduce noise
+    blurred = cv2.GaussianBlur(blurred, (5, 5), 0)
+    canny = cv2.Canny(blurred, 120, 255, 1)
+    # Use adaptive thresholding to get a binary image
+    binary = cv2.adaptiveThreshold(canny, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 4)
+
+    # # Use morphological operations to remove small noise
     kernel = np.ones((3, 3), np.uint8)
-    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)  # Open operation removes small objects
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)  # Close operation fills small holes
+
+
 
     # Find contours of the characters
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -37,16 +45,31 @@ def segment_characters(number_plate_image):
 
     character_images = []
     for contour in contours:
-        # Get the bounding box for each contour
+    # Calculate the area of the contour
+        area = cv2.contourArea(contour)
+
         x, y, w, h = cv2.boundingRect(contour)
-        
-        # Filter out contours that are too small or too large to be characters
-        if h > 10 and w > 10:  # Adjust based on image size
-            char_img = number_plate_image[y:y+h, x:x+w]
-            char_img = cv2.resize(char_img, (32, 32))  # Resize to model input size
+        aspect_ratio = h / float(w)
+        if area > 200 and 0.5 < aspect_ratio < 4:
+            
+            cv2.rectangle(binary, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+            char_img = gray[y:y + h, x:x + w]
+
+            char_img = cv2.resize(char_img, (32, 32))
             character_images.append(char_img)
-    
+
+            # Debug: Show each character
+            cv2.imshow(f"Character {len(character_images)}", char_img)
+            cv2.waitKey(0)
+
+    cv2.imshow("Binary Image", binary)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+    # Return segmented characters
     return character_images
+
 
 # Function to predict character from segmented images
 def predict_character(character_image):
@@ -76,6 +99,7 @@ def recognize_number_plate(number_plate_image):
     return predicted_text
 
 # Main function to test on a number plate image
+# Main function to test on a number plate image
 def main(number_plate_image_path):
     # Load number plate image
     number_plate_image = cv2.imread(number_plate_image_path)
@@ -87,5 +111,9 @@ def main(number_plate_image_path):
 
 # Example usage
 if __name__ == "__main__":
-    number_plate_image_path = 'D:\Major Project\license-plates-datasets\plate100.png'  # Update with the image path
+    # Use os.path.join for platform-independent file path handling
+    number_plate_image_path = "license-plates-datasets\plate1.png"
+    # number_plate_image_path = "grey_numberplate.png"
     main(number_plate_image_path)
+
+
